@@ -39,9 +39,10 @@ export default function ZoomExperience({
   const [activeSet, setActiveSet] = useState(resolveInitialSet);
   const [pendingSet, setPendingSet] = useState<string | null>(null);
   const [fadePhase, setFadePhase] = useState<
-    "idle" | "fading-in" | "fading-out"
+    "idle" | "fading-in" | "waiting" | "fading-out"
   >("idle");
   const [overlayVisible, setOverlayVisible] = useState(false);
+  const [highlightSet, setHighlightSet] = useState(() => resolveInitialSet());
 
   useEffect(() => {
     if (imageSets.length === 0) {
@@ -70,6 +71,7 @@ export default function ZoomExperience({
         return;
       }
       setPendingSet(target);
+      setHighlightSet(target);
       setOverlayVisible(true);
       setFadePhase("fading-in");
     },
@@ -81,14 +83,17 @@ export default function ZoomExperience({
       const timer = window.setTimeout(() => {
         if (pendingSet) {
           setActiveSet(pendingSet);
+          setPendingSet(null);
+          setFadePhase("waiting");
+          return;
         }
-        setPendingSet(null);
         setFadePhase("fading-out");
       }, FADE_DURATION_MS);
       return () => window.clearTimeout(timer);
     }
 
     if (fadePhase === "fading-out") {
+      setOverlayVisible(false);
       const timer = window.setTimeout(() => {
         setOverlayVisible(false);
         setFadePhase("idle");
@@ -98,9 +103,20 @@ export default function ZoomExperience({
     return;
   }, [fadePhase, pendingSet]);
 
+  const handleCanvasReady = useCallback(() => {
+    if (fadePhase === "waiting") {
+      setOverlayVisible(false);
+      setFadePhase("fading-out");
+    }
+  }, [fadePhase]);
+
+  useEffect(() => {
+    setHighlightSet(activeSet);
+  }, [activeSet]);
+
   if (imageSets.length === 0) {
     return (
-      <div className="relative h-screen w-screen overflow-hidden bg-black text-white">
+      <div className="relative min-h-[100dvh] min-h-screen w-screen overflow-hidden bg-black text-white">
         <div className="absolute inset-0 flex items-center justify-center bg-black">
           <p className="text-sm opacity-70">
             Add image collections to <code>public/images</code>.
@@ -111,18 +127,24 @@ export default function ZoomExperience({
   }
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-black">
-      <ZoomCanvas images={activeImages} />
+    <div className="relative min-h-[100dvh] min-h-screen w-screen overflow-hidden bg-black">
+      <ZoomCanvas images={activeImages} onReady={handleCanvasReady} />
       <div
         className={cx(
           "pointer-events-none absolute inset-0 bg-black opacity-0 transition-opacity duration-[450ms] ease-linear",
           overlayVisible && "opacity-100"
         )}
       />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-6 sm:pb-10">
-        <div className="flex gap-3 rounded-full bg-black/50 px-5 py-3 backdrop-blur-lg">
+      <div
+        className="pointer-events-none absolute inset-x-0 flex justify-center"
+        style={{
+          bottom:
+            "max(2.75rem, calc(env(safe-area-inset-bottom, 0px) + 2.75rem))",
+        }}
+      >
+        <div className="flex gap-3 rounded-full bg-black/50 px-4 py-3 backdrop-blur-lg">
           {imageSets.map((set) => {
-            const isActive = set.name === activeSet;
+            const isActive = set.name === highlightSet;
             const preview = set.images[0];
             const label = formatLabel(set.name);
             const isTransitioning = fadePhase !== "idle";

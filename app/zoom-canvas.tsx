@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 
 type ZoomCanvasProps = {
   images: string[];
+  onReady?: () => void;
 };
 
 type Layer = {
@@ -138,13 +139,15 @@ const buildLayers = (images: string[]): Layer[] =>
 
 const normalizeDepth = (value: number) => Math.max(value, 0);
 
-export default function ZoomCanvas({ images }: ZoomCanvasProps) {
+export default function ZoomCanvas({ images, onReady }: ZoomCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const readyRef = useRef(false);
   const layerCount = images.length;
 
   useEffect(() => {
     if (layerCount === 0) {
+      onReady?.();
       return;
     }
 
@@ -154,8 +157,10 @@ export default function ZoomCanvas({ images }: ZoomCanvasProps) {
       return;
     }
 
+    readyRef.current = false;
     const gl = canvas.getContext("webgl", { antialias: true, alpha: true });
     if (!gl) {
+      onReady?.();
       return;
     }
 
@@ -322,6 +327,10 @@ export default function ZoomCanvas({ images }: ZoomCanvasProps) {
         }
       }
       texturesReady = hasTexture;
+      if (!cancelled && texturesReady && !readyRef.current) {
+        readyRef.current = true;
+        onReady?.();
+      }
     };
 
     const loadAllTextures = async () => {
@@ -334,6 +343,10 @@ export default function ZoomCanvas({ images }: ZoomCanvasProps) {
       }
 
       assignTexturesFromResults(results);
+      if (!cancelled && texturesReady && !readyRef.current) {
+        readyRef.current = true;
+        onReady?.();
+      }
     };
 
     const handleWheel = (event: WheelEvent) => {
@@ -488,7 +501,7 @@ export default function ZoomCanvas({ images }: ZoomCanvasProps) {
       gl.deleteShader(vertexShader);
       gl.deleteShader(fragmentShader);
     };
-  }, [images, layerCount]);
+  }, [images, layerCount, onReady]);
 
   if (layerCount === 0) {
     return null;

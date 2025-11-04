@@ -4,8 +4,17 @@
   body {
     margin: 0;
     overflow: hidden;
+    min-height: 100vh;
     background-color: #ffffff;
     color: #171717;
     -webkit-font-smoothing: antialiased;
+  }
+}
+
+@supports (min-height: 100dvh) {
+  @layer base {
+    body {
+      min-height: 100dvh;
+    }
   }
 }
