@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/style/noMagicNumbers : Closer to the context*/
 "use client";
 
 import ZoomExperience, { type ImageSet } from "./zoom-experience";
@@ -10,14 +11,13 @@ const createImageSet = (name: string, count: number): ImageSet => ({
   }),
 });
 
-const STREET_COUNT = 15;
-const ANIMALS_COUNT = 13;
-const FACES_COUNT = 12;
-
 const IMAGE_SETS: ImageSet[] = [
-  createImageSet("street", STREET_COUNT),
-  createImageSet("animals", ANIMALS_COUNT),
-  createImageSet("faces", FACES_COUNT),
+  createImageSet("street", 15),
+  createImageSet("animals", 13),
+  createImageSet("faces", 12),
+  createImageSet("crystals", 12),
+  createImageSet("mountains", 11),
+  createImageSet("winter", 18),
 ];
 
 export default function Page() {
