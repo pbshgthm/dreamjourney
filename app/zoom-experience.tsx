@@ -245,7 +245,7 @@ export default function ZoomExperience({
 
         // Create gain node for volume control
         const gain = ctx.createGain();
-        gain.gain.value = 1.0;
+        gain.gain.value = 0.25; // Quarter volume
         gain.connect(ctx.destination);
         bgMusicGainRef.current = gain;
 
@@ -306,7 +306,7 @@ export default function ZoomExperience({
       // Create a new buffer source for each play (Web Audio API pattern)
       const source = audioContextRef.current.createBufferSource();
       const gainNode = audioContextRef.current.createGain();
-      gainNode.gain.value = 0.8; // Increased volume for better audibility
+      gainNode.gain.value = 1.0; // Full volume
 
       source.buffer = tickBufferRef.current;
       source.connect(gainNode);
@@ -354,7 +354,7 @@ export default function ZoomExperience({
 
       // Update background music using gain node for mute/unmute
       if (bgMusicGainRef.current) {
-        bgMusicGainRef.current.gain.value = newMuted ? 0 : 1.0;
+        bgMusicGainRef.current.gain.value = newMuted ? 0 : 0.25; // Quarter volume
       }
 
       // If unmuting and music isn't playing, start it
@@ -365,7 +365,7 @@ export default function ZoomExperience({
       ) {
         const ctx = audioContextRef.current;
         const gain = ctx.createGain();
-        gain.gain.value = 1.0;
+        gain.gain.value = 0.25; // Quarter volume
         gain.connect(ctx.destination);
         bgMusicGainRef.current = gain;
 
@@ -497,17 +497,26 @@ export default function ZoomExperience({
     }
   }, [isDragging, hideRingAfterDelay]);
 
-  // Handle drag start
+  // Handle drag start - only when ring is visible
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!audioStarted || fadePhase !== "idle") return;
+      // Only allow drag when ring is visible (groupVisible)
+      if (!(isHovered || showRingAfterStart) && hideRing) return;
       setIsDragging(true);
-      setIsHovered(true);
+      // Don't set isHovered here - visibility should only come from hovering the selected button
       const lastAngle = getPointerAngle(e.clientX, e.clientY);
       dragStartRef.current = { lastAngle };
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [audioStarted, fadePhase, getPointerAngle]
+    [
+      audioStarted,
+      fadePhase,
+      getPointerAngle,
+      isHovered,
+      showRingAfterStart,
+      hideRing,
+    ]
   );
 
   // Handle drag move
@@ -555,13 +564,15 @@ export default function ZoomExperience({
     []
   );
 
-  // Handle wheel for rotation
+  // Handle wheel for rotation - only when ring is visible
+  // Don't prevent default so zoom can still work
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       if (!audioStarted || fadePhase !== "idle") return;
-      e.preventDefault();
+      // Rotate the ring but don't prevent default - let zoom canvas also handle it
       const delta = e.deltaY * 0.003;
       setTargetRotation((prev) => prev + delta);
+      // Don't call e.preventDefault() - allow zoom to work simultaneously
     },
     [audioStarted, fadePhase]
   );
@@ -878,6 +889,11 @@ export default function ZoomExperience({
             transform: "translateX(-50%)",
             width: OUTER_RADIUS * 2,
             height: OUTER_RADIUS * 2,
+            // When ring is not visible, allow events to pass through for zoom
+            pointerEvents:
+              audioStarted && !isHovered && !showRingAfterStart && hideRing
+                ? "none"
+                : "auto",
           }}
         >
           {/* Clickable overlay to start audio - only visible before audio starts */}
@@ -907,11 +923,7 @@ export default function ZoomExperience({
               backdropFilter: "blur(8px)",
               WebkitBackdropFilter: "blur(8px)",
               opacity:
-                !audioStarted ||
-                isHovered ||
-                isDragging ||
-                showRingAfterStart ||
-                !hideRing
+                !audioStarted || isHovered || showRingAfterStart || !hideRing
                   ? 1
                   : 0,
               zIndex: 1,
@@ -941,15 +953,22 @@ export default function ZoomExperience({
           <div
             className="absolute inset-0 touch-none transition-opacity duration-300"
             onPointerCancel={handlePointerUp}
-            onPointerDown={audioStarted ? showRingTemporarily : undefined}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
-            onWheel={handleWheel}
+            onWheel={
+              audioStarted && (isHovered || showRingAfterStart || !hideRing)
+                ? handleWheel
+                : undefined
+            }
             ref={ringRef}
             style={{
               touchAction: "none",
               transform: `rotate(${-ringRotation}rad)`,
-              pointerEvents: audioStarted ? "auto" : "none",
+              // Only allow pointer events when audio started AND ring is visible
+              pointerEvents:
+                audioStarted && (isHovered || showRingAfterStart || !hideRing)
+                  ? "auto"
+                  : "none",
               cursor: isDragging ? "grabbing" : isHovered ? "grab" : "default",
               zIndex: 3,
             }}
@@ -968,23 +987,22 @@ export default function ZoomExperience({
               const preview = set.images[0];
               const label = formatLabel(set.name);
 
-              // Show all items when hovered/dragging, only selected when not
-              // Before audio starts, show all items. After audio starts, show on hover/drag or if selected
+              // Show all items when hovered, only selected when not
+              // Before audio starts, show all items. After audio starts, show on hover or if selected
               // Group visibility: outer circle, buttons, and SVG all use the same condition
+              // Note: isDragging alone doesn't trigger visibility - only maintains it if already visible
               const groupVisible =
-                !audioStarted ||
-                isHovered ||
-                isDragging ||
-                showRingAfterStart ||
-                !hideRing;
+                !audioStarted || isHovered || showRingAfterStart || !hideRing;
               const shouldShow = audioStarted
                 ? groupVisible || isAtBottom
                 : true;
-              // Allow dragging any visible image when ring is visible, or the selected image always
+              // Allow dragging only when ring is visible (groupVisible)
+              // Selected button can trigger hover to show ring, but can only drag when ring is visible
               // Before audio starts, don't allow dragging (just clicking to start)
               const isDraggable = audioStarted
-                ? isAtBottom ||
-                  ((isHovered || isDragging || !hideRing) && shouldShow)
+                ? groupVisible &&
+                  (isAtBottom ||
+                    ((isHovered || isDragging || !hideRing) && shouldShow))
                 : false;
 
               return (
@@ -1004,6 +1022,8 @@ export default function ZoomExperience({
                     zIndex: isAtBottom ? 10 : 1,
                     opacity: isAtBottom ? 1 : groupVisible ? 1 : 0,
                     pointerEvents:
+                      // Selected button always has pointer events to allow hover
+                      // Other buttons only when visible and draggable
                       isAtBottom || (isDraggable && groupVisible)
                         ? "auto"
                         : "none",
@@ -1063,8 +1083,7 @@ export default function ZoomExperience({
               top: "50%",
               transform: "translate(-50%, -40%)",
               opacity:
-                audioStarted &&
-                (isHovered || isDragging || showRingAfterStart || !hideRing)
+                audioStarted && (isHovered || showRingAfterStart || !hideRing)
                   ? 0.7
                   : 0,
               zIndex: 4,
