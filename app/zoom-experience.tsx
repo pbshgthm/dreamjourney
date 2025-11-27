@@ -40,6 +40,116 @@ const MIDDLE_PLAYBACK_RATE = 1.0; // 1x speed at middle zoom
 const QUADRATIC_A = 1.0;
 const QUADRATIC_B = 0.5;
 const RING_HIDE_DELAY_MS = 1000; // keep ring/buttons visible after leaving dial area
+const INTRO_FADE_MS = 400;
+const INTRO_BUTTON_DELAY_MS = 1000;
+
+function PhoneSideIcon() {
+  return (
+    <svg
+      aria-hidden
+      width="160"
+      height="190"
+      viewBox="0 0 160 190"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="drop-shadow-[0_0_16px_rgba(0,0,0,0.45)] phone-animate"
+    >
+      <g className="phone-outline">
+        <rect
+          x="44"
+          y="10"
+          width="71.221"
+          height="144.204"
+          rx="10"
+          stroke="white"
+          strokeOpacity="0.5"
+          strokeWidth="1"
+        />
+        <line
+          x1="73.28"
+          y1="16.546"
+          x2="85.945"
+          y2="16.546"
+          stroke="white"
+          strokeOpacity="0.5"
+          strokeWidth="1"
+          strokeLinecap="round"
+        />
+      </g>
+      <g className="phone-shapes">
+        <rect
+          x="70.6105"
+          y="73.102"
+          width="18"
+          height="18"
+          rx="3.5"
+          fill="white"
+          fillOpacity="0.9"
+        />
+      </g>
+    </svg>
+  );
+}
+
+function DialSideIcon() {
+  const cx = 80;
+  const cy = 80;
+  const ringR = 33;
+  const dots = [
+    { x: cx + ringR * Math.sin(0), y: cy - ringR * Math.cos(0) }, // top
+    { x: cx + ringR * Math.sin(Math.PI / 3), y: cy - ringR * Math.cos(Math.PI / 3) },
+    { x: cx + ringR * Math.sin((2 * Math.PI) / 3), y: cy - ringR * Math.cos((2 * Math.PI) / 3) },
+    { x: cx + ringR * Math.sin(Math.PI), y: cy - ringR * Math.cos(Math.PI) }, // bottom (active start)
+    { x: cx + ringR * Math.sin((4 * Math.PI) / 3), y: cy - ringR * Math.cos((4 * Math.PI) / 3) },
+    { x: cx + ringR * Math.sin((5 * Math.PI) / 3), y: cy - ringR * Math.cos((5 * Math.PI) / 3) },
+  ];
+
+  return (
+    <svg
+      aria-hidden
+      width="148"
+      height="148"
+      viewBox="0 0 160 160"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="dial-animate drop-shadow-[0_0_12px_rgba(0,0,0,0.4)]"
+    >
+      <g className="dial-ring">
+        <circle
+          cx="80"
+          cy="80"
+          r="56.1355"
+          fill="none"
+          stroke="white"
+          strokeOpacity="0.5"
+          strokeWidth="1"
+        />
+        {dots.map((p, i) => (
+          <circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r="9"
+            fill="white"
+            fillOpacity={i === 3 ? 0.9 : 0.5}
+            stroke="none"
+            strokeWidth={0}
+          />
+        ))}
+      </g>
+      {/* Static ring highlighting bottom position */}
+      <circle
+        cx={cx}
+        cy={cy + ringR}
+        r="12.5"
+        fill="none"
+        stroke="white"
+        strokeOpacity="0.5"
+        strokeWidth="1"
+      />
+    </svg>
+  );
+}
 
 declare global {
   interface DeviceOrientationEvent {
@@ -87,6 +197,10 @@ export default function ZoomExperience({
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [dotCount, setDotCount] = useState(1);
   const [minLoadingTimePassed, setMinLoadingTimePassed] = useState(false);
+  const [introStage, setIntroStage] = useState<0 | 1>(0);
+  const [introFade, setIntroFade] = useState<"idle" | "out" | "in">("idle");
+  const [animFade, setAnimFade] = useState<"in" | "out">("in");
+  const [buttonReady, setButtonReady] = useState(false);
 
   // Circular selector state
   const [mounted, setMounted] = useState(false);
@@ -137,6 +251,8 @@ export default function ZoomExperience({
   const ringRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number>(0);
   const hoverTimeoutRef = useRef<number | null>(null);
+  const introButtonTimeoutRef = useRef<number | null>(null);
+  const introTransitionTimeoutRef = useRef<number | null>(null);
   const audioStartTimeoutRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const tickBufferRef = useRef<AudioBuffer | null>(null);
@@ -146,6 +262,41 @@ export default function ZoomExperience({
   const bgMusicBufferRef = useRef<AudioBuffer | null>(null);
   const isMutedRef = useRef(false);
   const zoomRangeRef = useRef<{ min: number; max: number } | null>(null);
+
+  const handleNextStage = useCallback(() => {
+    if (introStage === 1) return;
+    setIntroFade("out");
+    setAnimFade("out");
+    setButtonReady(false);
+    if (introButtonTimeoutRef.current) {
+      window.clearTimeout(introButtonTimeoutRef.current);
+      introButtonTimeoutRef.current = null;
+    }
+    introTransitionTimeoutRef.current = window.setTimeout(() => {
+      setIntroStage(1);
+      setIntroFade("in");
+      setAnimFade("in");
+      introButtonTimeoutRef.current = window.setTimeout(() => {
+        setButtonReady(true);
+      }, INTRO_BUTTON_DELAY_MS);
+      window.setTimeout(() => setIntroFade("idle"), INTRO_FADE_MS);
+    }, INTRO_FADE_MS);
+  }, [introStage]);
+
+  // initial button delay
+  useEffect(() => {
+    introButtonTimeoutRef.current = window.setTimeout(() => {
+      setButtonReady(true);
+    }, INTRO_BUTTON_DELAY_MS);
+    return () => {
+      if (introButtonTimeoutRef.current) {
+        window.clearTimeout(introButtonTimeoutRef.current);
+      }
+      if (introTransitionTimeoutRef.current) {
+        window.clearTimeout(introTransitionTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const anglePerItem = useMemo(
     () => (imageSets.length > 0 ? (2 * Math.PI) / imageSets.length : 0),
@@ -1320,65 +1471,87 @@ export default function ZoomExperience({
                 : 1,
         }}
       >
-        {/* Logo - shown on both loading and enter screens, absolutely positioned */}
         {(isInitialLoading ||
           !minLoadingTimePassed ||
           !audioReady ||
           !audioStarted) && (
           <Image
             alt="Dream Journey"
-            className="absolute select-none"
+            className="absolute left-1/2 select-none -translate-x-1/2"
             height={12}
             src="/dream-journey-long.svg"
             style={{
               pointerEvents: "none",
-              top: "calc(50% - 100px)",
-              left: "50%",
-              transform: "translate(-50%, -50%) scale(3.5)",
+              top: "calc(50% - 220px)",
+              transform: "translateY(-50%) scale(3.5)",
             }}
             width={64}
           />
         )}
-        {/* Container for button/text to maintain consistent spacing */}
-        <div
-          className="absolute flex items-center justify-center"
-          style={{
-            top: "calc(50% + 32px)",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            height: "96px",
-            width: "96px",
-          }}
-        >
-          {isInitialLoading || !minLoadingTimePassed || !audioReady ? (
-            <span className="font-medium text-white/80 text-xs uppercase">
-              Dreaming
-              <span
-                style={{
-                  display: "inline-block",
-                  width: "1.5ch",
-                  textAlign: "left",
-                }}
+
+        {(isInitialLoading ||
+          !minLoadingTimePassed ||
+          !audioReady ||
+          !audioStarted) && (
+          <div
+            className={`pointer-events-none flex flex-col items-center gap-10 transition-opacity duration-400 translate-y-14 ${introFade === "out" ? "opacity-0" : "opacity-100"}`}
+          >
+            {introStage === 0 ? (
+              <div className={`flex flex-col items-center rounded-[14px] px-3 pt-4 pb-4 w-[210px] h-[240px] transition-opacity duration-400 ${animFade === "in" ? "opacity-100" : "opacity-0"}`}>
+                <div className="flex justify-center translate-y-2">
+                  <PhoneSideIcon />
+                </div>
+                <div className="mt-auto pb-1 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-white/50">
+                  Rotate phone to move
+                </div>
+              </div>
+            ) : (
+              <div className={`flex flex-col items-center rounded-[14px] px-3 pt-4 pb-4 w-[210px] h-[240px] transition-opacity duration-400 ${animFade === "in" ? "opacity-100" : "opacity-0"}`}>
+                <div className="flex justify-center scale-[1.22] translate-y-8">
+                  <DialSideIcon />
+                </div>
+                <div className="mt-auto pb-1 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-white/50">
+                  Rotate dial to change
+                </div>
+              </div>
+            )}
+
+            {introStage === 0 ? (
+              <div
+                className={`mt-6 flex h-24 w-24 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80 transition-opacity duration-400 hover:bg-white/10 active:scale-95 ${
+                  buttonReady ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+                }`}
+                role="button"
+                tabIndex={-1}
+                onClick={buttonReady ? handleNextStage : undefined}
               >
-                {".".repeat(dotCount)}
-              </span>
-            </span>
-          ) : audioStarted ? null : (
-            <button
-              className="pointer-events-auto flex h-24 w-24 cursor-pointer items-center justify-center rounded-full border border-white/20 bg-white/5 transition-all hover:bg-white/10 active:scale-95"
-              onClick={startAudio}
-              style={{
-                fontFamily:
-                  'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-              }}
-              type="button"
-            >
-              <span className="font-medium text-white/80 text-xs uppercase">
-                ENTER
-              </span>
-            </button>
-          )}
-        </div>
+                Next
+              </div>
+            ) : isInitialLoading || !minLoadingTimePassed || !audioReady ? (
+              <div
+                className={`mt-6 flex h-24 w-24 items-center justify-center text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80 transition-opacity duration-400 ${
+                  buttonReady ? "opacity-100" : "opacity-0"
+                }`}
+              >
+                Dreaming
+                <span className="inline-block w-[1.5ch] text-left">
+                  {".".repeat(dotCount)}
+                </span>
+              </div>
+            ) : audioStarted ? null : (
+              <div
+                className={`mt-6 flex h-24 w-24 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80 transition-opacity duration-400 hover:bg-white/10 active:scale-95 ${
+                  buttonReady ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+                }`}
+                role="button"
+                tabIndex={-1}
+                onClick={buttonReady ? startAudio : undefined}
+              >
+                Enter
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

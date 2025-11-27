@@ -68,3 +68,71 @@
     transform: rotate(360deg);
   }
 }
+
+/* Phone doodle keyframes (loading/enter states) */
+@keyframes phone-tilt {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-90deg);
+  }
+  75% {
+    transform: rotate(90deg);
+  }
+}
+
+@keyframes phone-shape-motion {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(2.365);
+  }
+  50% {
+    transform: scale(1);
+  }
+  75% {
+    transform: scale(0.487);
+  }
+}
+
+.phone-animate .phone-outline {
+  animation: phone-tilt 7s ease-in-out infinite;
+  transform-origin: 49.7566% 43.2116%;
+  transform-box: view-box;
+}
+
+.phone-animate .phone-shapes {
+  animation: phone-shape-motion 7s ease-in-out infinite;
+  transform-origin: 49.7566% 43.2116%;
+  transform-box: view-box;
+}
+
+/* Dial keyframes (other side) */
+@keyframes dial-ring-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  60% {
+    transform: rotate(-120deg); /* CCW */
+  }
+  78% {
+    transform: rotate(-120deg); /* hold at B */
+  }
+  78.001% {
+    transform: rotate(0deg); /* snap back */
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.dial-animate .dial-ring {
+  animation: dial-ring-rotate 2s ease-out infinite;
+  transform-origin: 50% 50%;
+  transform-box: view-box;
+}
