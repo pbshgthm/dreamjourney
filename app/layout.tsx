@@ -3,11 +3,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Dream Journey",
-  description: "A journey into AI dreams, generated with Midjourney",
+  description: "An immersive experience, exploring interactive AI generated artwork",
   keywords: ["AI", "Midjourney", "dreams", "art", "generative art", "interactive", "zoom"],
-  authors: [{ name: "Dream Journey" }],
-  creator: "Dream Journey",
-  publisher: "Dream Journey",
+  authors: [{ name: "Poobesh Gowtham" }],
+  creator: "Poobesh Gowtham",
+  publisher: "Poobesh Gowtham",
   formatDetection: {
     email: false,
     address: false,
@@ -18,15 +18,27 @@ export const metadata: Metadata = {
   }),
   openGraph: {
     title: "Dream Journey",
-    description: "A journey into AI dreams, generated with Midjourney",
+    description: "An immersive experience, exploring interactive AI generated artwork",
     type: "website",
     locale: "en_US",
     siteName: "Dream Journey",
+    creators: ["Poobesh Gowtham"],
+    images: [
+      {
+        url: "/dream-journey-og.png",
+        width: 1200,
+        height: 630,
+        alt: "Dream Journey - An immersive experience, exploring interactive AI generated artwork",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Dream Journey",
-    description: "A journey into AI dreams, generated with Midjourney",
+    description: "An immersive experience, exploring interactive AI generated artwork",
+    creator: "@pbshgthm",
+    site: "@pbshgthm",
+    images: ["/dream-journey-og.png"],
   },
   icons: {
     icon: "/favicon.svg",

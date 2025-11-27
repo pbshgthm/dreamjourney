@@ -1310,7 +1310,7 @@ export default function ZoomExperience({
       <div
         className="absolute inset-0 z-50 flex flex-col items-center justify-center transition-opacity duration-700"
         style={{
-          background: "radial-gradient(circle at center, #1E1E1E, #0F0F0F)",
+          background: "#0A0A0A",
           pointerEvents: "none",
           opacity:
             isInitialLoading || !minLoadingTimePassed || !audioReady

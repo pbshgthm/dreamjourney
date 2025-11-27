@@ -33,9 +33,9 @@ const WHEEL_NORMALIZATION_FACTOR = 80;
 const WHEEL_DAMPING = 0.9;
 const WHEEL_EPSILON = 0.0002;
 const CLEAR_COLOR = {
-  r: 0.02,
-  g: 0.02,
-  b: 0.05,
+  r: 10 / 255,
+  g: 10 / 255,
+  b: 10 / 255,
   a: 1,
 } as const;
 const POSITION_COMPONENTS = 2;
