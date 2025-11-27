@@ -39,7 +39,7 @@ const MIDDLE_PLAYBACK_RATE = 1.0; // 1x speed at middle zoom
 // Calculated: a = 1.0, b = 0.5
 const QUADRATIC_A = 1.0;
 const QUADRATIC_B = 0.5;
-const RING_HIDE_DELAY_MS = 2000; // keep ring/buttons visible briefly after start or tap
+const RING_HIDE_DELAY_MS = 1000; // keep ring/buttons visible after leaving dial area
 
 declare global {
   interface DeviceOrientationEvent {
@@ -71,17 +71,8 @@ export default function ZoomExperience({
   const [activeSet, setActiveSet] = useState(resolveInitialSet);
   const [pendingSet, setPendingSet] = useState<string | null>(null);
   const [fadePhase, setFadePhase] = useState<
-    | "idle"
-    | "fading-in"
-    | "loading"
-    | "fading-to-black"
-    | "holding"
-    | "fading-out"
+    "idle" | "loading" | "fading-to-black" | "holding" | "fading-out"
   >("idle");
-  // Overlay states: hidden (0%), half (50% + blur), full (100% black), fading (transitioning to 0%)
-  const [overlayState, setOverlayState] = useState<
-    "hidden" | "half" | "full" | "fading"
-  >("hidden");
   const [highlightSet, setHighlightSet] = useState(() => resolveInitialSet());
   const [revealReady, setRevealReady] = useState(false);
   const [orientation, setOrientation] = useState<number | null>(null);
@@ -91,6 +82,7 @@ export default function ZoomExperience({
   >("checking");
   const [isMobile, setIsMobile] = useState(false);
   const [audioStarted, setAudioStarted] = useState(false);
+  const [audioReady, setAudioReady] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [dotCount, setDotCount] = useState(1);
@@ -135,10 +127,13 @@ export default function ZoomExperience({
   const [targetRotation, setTargetRotation] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [isSelectedCircleHovered, setIsSelectedCircleHovered] = useState(false);
   const [showRingAfterStart, setShowRingAfterStart] = useState(false);
-  const [hideRing, setHideRing] = useState(false);
   const dragStartRef = useRef<{ lastAngle: number } | null>(null);
   const dragStartIndexRef = useRef<number | null>(null);
+  const clickStartRef = useRef<{ x: number; y: number; index: number } | null>(
+    null
+  );
   const ringRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number>(0);
   const hoverTimeoutRef = useRef<number | null>(null);
@@ -162,36 +157,73 @@ export default function ZoomExperience({
     []
   );
 
-  const showRingTemporarily = useCallback(() => {
-    setHideRing(false);
-    setShowRingAfterStart(true);
-    if (audioStartTimeoutRef.current !== null) {
-      clearTimeout(audioStartTimeoutRef.current);
-    }
-    audioStartTimeoutRef.current = window.setTimeout(() => {
-      setShowRingAfterStart(false);
-      setHideRing(true);
-      audioStartTimeoutRef.current = null;
-    }, RING_HIDE_DELAY_MS);
-  }, []);
-
   const hideRingAfterDelay = useCallback(() => {
+    // Don't hide if transitioning
+    if (fadePhase !== "idle") {
+      return;
+    }
     if (audioStartTimeoutRef.current !== null) {
       clearTimeout(audioStartTimeoutRef.current);
+      audioStartTimeoutRef.current = null;
     }
     audioStartTimeoutRef.current = window.setTimeout(() => {
-      setShowRingAfterStart(false);
-      setHideRing(true);
+      // Check again if still idle before hiding
+      if (fadePhase === "idle") {
+        setShowRingAfterStart(false);
+      }
       audioStartTimeoutRef.current = null;
     }, RING_HIDE_DELAY_MS);
-  }, []);
+  }, [fadePhase]);
 
   // Get background music volume - lower on mobile
   const getBgMusicVolume = useCallback(() => {
     return isMobile ? 0.05 : 0.25; // 5% on mobile, 25% on desktop
   }, [isMobile]);
 
-  // Start audio - called by tapping the selector circle
+  // Initialize audio buffers during loading phase (before user interaction)
+  const initializeAudio = useCallback(async () => {
+    if (audioReady) return; // Already initialized
+
+    try {
+      // Initialize audio context (will be suspended until user gesture)
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext();
+      }
+
+      // Fetch and decode the tick sound
+      if (!tickBufferRef.current && audioContextRef.current) {
+        const response = await fetch("/tick.mp3");
+        const arrayBuffer = await response.arrayBuffer();
+        tickBufferRef.current =
+          await audioContextRef.current.decodeAudioData(arrayBuffer);
+      }
+
+      // Fetch and decode the background music
+      if (!bgMusicBufferRef.current && audioContextRef.current) {
+        try {
+          const response = await fetch("/bg.mp3");
+          const arrayBuffer = await response.arrayBuffer();
+          bgMusicBufferRef.current =
+            await audioContextRef.current.decodeAudioData(arrayBuffer);
+        } catch {
+          // Ignore errors
+        }
+      }
+
+      // Mark audio as ready
+      setAudioReady(true);
+    } catch {
+      // Ignore errors, but still mark as ready to allow progression
+      setAudioReady(true);
+    }
+  }, [audioReady]);
+
+  // Initialize audio during loading phase
+  useEffect(() => {
+    initializeAudio();
+  }, [initializeAudio]);
+
+  // Start audio - called by tapping the selector circle or overlay
   const startAudio = useCallback(async () => {
     if (audioStarted) return; // Already started
 
@@ -214,32 +246,15 @@ export default function ZoomExperience({
         }
       }
 
-      // Initialize audio context if needed
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext();
-        // Fetch and decode the tick sound
-        const response = await fetch("/tick.mp3");
-        const arrayBuffer = await response.arrayBuffer();
-        tickBufferRef.current =
-          await audioContextRef.current.decodeAudioData(arrayBuffer);
-      } else if (audioContextRef.current.state === "suspended") {
+      // Resume audio context if suspended
+      if (
+        audioContextRef.current &&
+        audioContextRef.current.state === "suspended"
+      ) {
         await audioContextRef.current.resume();
         // Ensure gain is still set correctly after resume (mobile safeguard)
         if (bgMusicGainRef.current && !isMutedRef.current) {
           bgMusicGainRef.current.gain.value = getBgMusicVolume();
-        }
-      }
-
-      // Initialize background music using Web Audio API for smooth playbackRate changes
-      if (!bgMusicBufferRef.current && audioContextRef.current) {
-        try {
-          // Load and decode the background music
-          const response = await fetch("/bg.mp3");
-          const arrayBuffer = await response.arrayBuffer();
-          bgMusicBufferRef.current =
-            await audioContextRef.current.decodeAudioData(arrayBuffer);
-        } catch (error) {
-          // Ignore errors
         }
       }
 
@@ -270,17 +285,11 @@ export default function ZoomExperience({
       }
 
       setAudioStarted(true);
-      showRingTemporarily();
+      // Don't show ring after start - let user discover it by hovering
     } catch {
       // Ignore errors
     }
-  }, [
-    audioStarted,
-    isMobile,
-    permissionState,
-    showRingTemporarily,
-    getBgMusicVolume,
-  ]);
+  }, [audioStarted, isMobile, permissionState, getBgMusicVolume]);
 
   // Sync mute ref with state
   useEffect(() => {
@@ -485,23 +494,26 @@ export default function ZoomExperience({
     return Math.atan2(clientY - centerY, clientX - centerX);
   }, []);
 
-  // Handle hover
-  const handlePointerEnter = useCallback(() => {
-    // Clear any pending fade out timeout
-    if (hoverTimeoutRef.current !== null) {
-      clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
-    }
-    // Cancel audio start fade-out if user hovers
+  // Handle entering dial area - cancels hide timer
+  const handleDialEnter = useCallback(() => {
+    // Cancel hide timer if user enters dial area
     if (audioStartTimeoutRef.current !== null) {
       clearTimeout(audioStartTimeoutRef.current);
       audioStartTimeoutRef.current = null;
     }
-    // Show everything when hovering
-    setHideRing(false);
+    if (hoverTimeoutRef.current !== null) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Handle hover on selected button
+  const handlePointerEnter = useCallback(() => {
+    handleDialEnter();
+    // Show dial when hovering
     setShowRingAfterStart(true);
     setIsHovered(true);
-  }, []);
+  }, [handleDialEnter]);
 
   const handlePointerLeave = useCallback(() => {
     if (!isDragging) {
@@ -511,24 +523,54 @@ export default function ZoomExperience({
       }
       // Set hover to false immediately
       setIsHovered(false);
-      // Hide everything except selected button and selected circle bg after 2 seconds
+      // Hide dial after 1 second (re-entering cancels this timer)
+      hideRingAfterDelay();
+    }
+  }, [isDragging, hideRingAfterDelay]);
+
+  // Handle hover on selected circle bg
+  const handleSelectedCircleEnter = useCallback(() => {
+    handleDialEnter();
+    // Show dial when hovering selected circle
+    setShowRingAfterStart(true);
+    setIsSelectedCircleHovered(true);
+  }, [handleDialEnter]);
+
+  const handleSelectedCircleLeave = useCallback(() => {
+    if (!isDragging) {
+      // Clear any existing timeout
+      if (hoverTimeoutRef.current !== null) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+      // Set hover to false immediately
+      setIsSelectedCircleHovered(false);
+      // Hide dial after 1 second (re-entering cancels this timer)
       hideRingAfterDelay();
     }
   }, [isDragging, hideRingAfterDelay]);
 
   // Handle drag start - selected button can always drag, others need ring visible
   const handlePointerDown = useCallback(
-    (e: React.PointerEvent, isSelectedButton = false) => {
+    (e: React.PointerEvent, isSelectedButton = false, buttonIndex?: number) => {
       if (!audioStarted || fadePhase !== "idle") return;
 
       // Selected button can always drag - show ring when dragging starts
       if (isSelectedButton) {
-        setHideRing(false);
         setShowRingAfterStart(true);
         setIsHovered(true);
       } else {
         // Other buttons only when ring is visible
-        if (!(isHovered || showRingAfterStart) && hideRing) return;
+        if (!(isHovered || isSelectedCircleHovered || showRingAfterStart))
+          return;
+      }
+
+      // Track click start position and index for click detection
+      if (buttonIndex !== undefined) {
+        clickStartRef.current = {
+          x: e.clientX,
+          y: e.clientY,
+          index: buttonIndex,
+        };
       }
 
       setIsDragging(true);
@@ -543,8 +585,8 @@ export default function ZoomExperience({
       fadePhase,
       getPointerAngle,
       isHovered,
+      isSelectedCircleHovered,
       showRingAfterStart,
-      hideRing,
       selectedIndex,
     ]
   );
@@ -553,6 +595,17 @@ export default function ZoomExperience({
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (!(isDragging && dragStartRef.current)) return;
+
+      // If we have a click start, check if movement is significant (more than 5px)
+      // If so, clear the click start to indicate this is a drag, not a click
+      if (clickStartRef.current) {
+        const dx = e.clientX - clickStartRef.current.x;
+        const dy = e.clientY - clickStartRef.current.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance > 5) {
+          clickStartRef.current = null; // Significant movement = drag, not click
+        }
+      }
 
       const currentAngle = getPointerAngle(e.clientX, e.clientY);
       let delta = currentAngle - dragStartRef.current.lastAngle;
@@ -572,18 +625,61 @@ export default function ZoomExperience({
   // Handle drag end and snap to nearest
   const handlePointerUp = useCallback(() => {
     if (!isDragging) return;
+
+    // Check if this was a click (no significant movement) and dial is visible
+    const isDialVisible =
+      isHovered || isSelectedCircleHovered || showRingAfterStart;
+    if (clickStartRef.current && isDialVisible) {
+      // This was a click, not a drag - rotate to the clicked image's position
+      const clickedIndex = clickStartRef.current.index;
+      const targetRotationForIndex = clickedIndex * anglePerItem;
+
+      // Calculate shortest rotation path, preferring clockwise for equal distance
+      const currentNormalized =
+        ((targetRotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      const targetNormalized =
+        ((targetRotationForIndex % (2 * Math.PI)) + 2 * Math.PI) %
+        (2 * Math.PI);
+      let diff = targetNormalized - currentNormalized;
+
+      // Normalize to [-π, π] range for shortest path
+      if (diff > Math.PI) {
+        diff -= 2 * Math.PI;
+      } else if (diff < -Math.PI) {
+        diff += 2 * Math.PI;
+      }
+
+      // If exactly 180 degrees, prefer clockwise (positive)
+      if (Math.abs(Math.abs(diff) - Math.PI) < 0.001) {
+        diff = Math.PI;
+      }
+
+      // Calculate final target rotation by adding the normalized difference
+      const finalTarget = targetRotation + diff;
+      setTargetRotation(finalTarget);
+      clickStartRef.current = null;
+    } else {
+      // This was a drag - snap to nearest item
+      const nearestIndex = Math.round(targetRotation / anglePerItem);
+      const snappedRotation = nearestIndex * anglePerItem;
+      setTargetRotation(snappedRotation);
+    }
+
     setIsDragging(false);
     dragStartRef.current = null;
-
-    // Snap to nearest item
-    const nearestIndex = Math.round(targetRotation / anglePerItem);
-    const snappedRotation = nearestIndex * anglePerItem;
-    setTargetRotation(snappedRotation);
+    clickStartRef.current = null;
 
     // Keep hover state active - let pointer leave handler manage fade out
     // Note: dragStartIndexRef remains set until transition is triggered
     // This ensures only one transition per drag
-  }, [isDragging, targetRotation, anglePerItem]);
+  }, [
+    isDragging,
+    targetRotation,
+    anglePerItem,
+    isHovered,
+    isSelectedCircleHovered,
+    showRingAfterStart,
+  ]);
 
   // Cleanup timeouts on unmount
   useEffect(
@@ -719,7 +815,6 @@ export default function ZoomExperience({
     if (!exists) {
       setActiveSet(resolveInitialSet());
       setFadePhase("idle");
-      setOverlayState("hidden");
     }
   }, [activeSet, imageSets, resolveInitialSet]);
 
@@ -731,29 +826,22 @@ export default function ZoomExperience({
     return selected?.images ?? imageSets[0]?.images ?? [];
   }, [activeSet, imageSets]);
 
+  // Get canvas opacity based on fade phase
+  const getCanvasOpacity = () => {
+    if (fadePhase === "idle" || fadePhase === "loading") return 1;
+    if (fadePhase === "fading-to-black") return 0;
+    if (fadePhase === "holding") return 0;
+    if (fadePhase === "fading-out") return 1; // Will transition from 0 to 1
+    return 1;
+  };
+
   // Get transition duration based on current phase
   const getTransitionDuration = () => {
-    if (fadePhase === "fading-in") return FADE_IN_DURATION_MS;
     if (fadePhase === "fading-to-black") return FADE_TO_BLACK_DURATION_MS;
     if (fadePhase === "holding") return 0; // No transition during hold
     if (fadePhase === "fading-out") return FADE_OUT_DURATION_MS;
-    return FADE_IN_DURATION_MS;
+    return 0;
   };
-
-  // Overlay styles based on state
-  const overlayStyles: React.CSSProperties = {
-    transitionDuration: `${getTransitionDuration()}ms`,
-    transitionProperty: "opacity, background-color",
-    transitionTimingFunction: "linear",
-  };
-
-  const overlayClass = cx(
-    "pointer-events-none absolute inset-0",
-    overlayState === "hidden" && "opacity-0 bg-black",
-    overlayState === "half" && "opacity-50 bg-black",
-    overlayState === "full" && "opacity-100 bg-black",
-    overlayState === "fading" && "opacity-0 bg-black"
-  );
 
   // Preload images for a given set
   const preloadImages = useCallback(
@@ -781,12 +869,11 @@ export default function ZoomExperience({
       if (fadePhase !== "idle" || target === activeSet) {
         return;
       }
-      // Step 1: Show 50% blur overlay first (don't change image yet)
+      // Start loading images immediately
       setPendingSet(target);
       setHighlightSet(target);
       setRevealReady(false);
-      setOverlayState("half");
-      setFadePhase("fading-in");
+      setFadePhase("loading");
     },
     [activeSet, fadePhase]
   );
@@ -865,17 +952,8 @@ export default function ZoomExperience({
   ]);
 
   useEffect(() => {
-    if (fadePhase === "fading-in") {
-      // Step 2: After overlay reaches 50%, start preloading images
-      const timer = window.setTimeout(() => {
-        setFadePhase("loading");
-      }, FADE_IN_DURATION_MS);
-      return () => window.clearTimeout(timer);
-    }
-
     if (fadePhase === "fading-to-black") {
-      // Step 4: Fade from 50% to 100% opaque black
-      setOverlayState("full");
+      // Fade canvas to black
       const timer = window.setTimeout(() => {
         setFadePhase("holding");
       }, FADE_TO_BLACK_DURATION_MS);
@@ -883,7 +961,7 @@ export default function ZoomExperience({
     }
 
     if (fadePhase === "holding") {
-      // Step 5: Hold at 100% black, swap images NOW
+      // Hold at black, swap images NOW
       if (pendingSet) {
         setActiveSet(pendingSet);
         setPendingSet(null);
@@ -895,12 +973,10 @@ export default function ZoomExperience({
     }
 
     if (fadePhase === "fading-out") {
-      // Step 6: Fade out from 100% to 0%
-      setOverlayState("fading");
+      // Fade canvas back in
       const timer = window.setTimeout(() => {
         setFadePhase("idle");
         setRevealReady(false);
-        setOverlayState("hidden");
       }, FADE_OUT_DURATION_MS);
       return () => window.clearTimeout(timer);
     }
@@ -912,9 +988,18 @@ export default function ZoomExperience({
     setIsInitialLoading(false);
   }, []);
 
-  // Step 3: During loading phase, preload images then proceed
+  // During loading phase, preload images then proceed
   useEffect(() => {
     if (fadePhase === "loading" && pendingSet) {
+      // Hide the dial immediately when loading starts
+      setIsHovered(false);
+      setIsSelectedCircleHovered(false);
+      setShowRingAfterStart(false);
+      // Clear any pending timeouts
+      if (audioStartTimeoutRef.current !== null) {
+        clearTimeout(audioStartTimeoutRef.current);
+        audioStartTimeoutRef.current = null;
+      }
       preloadImages(pendingSet).then(() => {
         setRevealReady(true);
         setFadePhase("fading-to-black");
@@ -926,43 +1011,38 @@ export default function ZoomExperience({
     setHighlightSet(activeSet);
   }, [activeSet]);
 
-  if (imageSets.length === 0) {
-    return (
-      <div
-        className="relative min-h-[100dvh] min-h-[100svh] w-screen overflow-hidden bg-black text-white"
-        style={{ minHeight: "100dvh" }}
-      >
-        <div className="absolute inset-0 flex items-center justify-center bg-black">
-          <p className="text-sm opacity-70">
-            Add image collections to <code>public/images</code>.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
-      className="relative min-h-[100dvh] min-h-[100svh] w-screen overflow-hidden bg-black"
+      className="relative min-h-[100dvh] min-h-[100svh] w-screen overflow-hidden bg-[#0A0A0A]"
       style={{ minHeight: "100dvh" }}
     >
-      <ZoomCanvas
-        enabled={audioStarted}
-        images={activeImages}
-        isMobile={isMobile}
-        onReady={handleCanvasReady}
-        onZoomChange={updatePlaybackRate}
-        orientation={audioStarted ? orientation : null}
-        rawOrientation={audioStarted ? rawOrientation : null}
-      />
-
-      <div className={overlayClass} style={overlayStyles} />
+      <div
+        style={{
+          opacity: getCanvasOpacity(),
+          transition:
+            fadePhase === "fading-to-black" ||
+            fadePhase === "fading-out" ||
+            fadePhase === "holding"
+              ? `opacity ${getTransitionDuration()}ms linear`
+              : "none",
+        }}
+      >
+        <ZoomCanvas
+          enabled={audioStarted}
+          images={activeImages}
+          isMobile={isMobile}
+          onReady={handleCanvasReady}
+          onZoomChange={updatePlaybackRate}
+          orientation={audioStarted ? orientation : null}
+          rawOrientation={audioStarted ? rawOrientation : null}
+        />
+      </div>
 
       {/* Mute button - top right */}
       {audioStarted && (
         <button
           aria-label={isMuted ? "Unmute" : "Mute"}
-          className="absolute top-4 right-4 z-40 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-black/50 p-3 backdrop-blur-md transition-all hover:scale-110 hover:bg-black/70 active:scale-95"
+          className="absolute top-4 right-4 z-40 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-[#0A0A0A]/50 p-3 backdrop-blur-md transition-all hover:scale-110 hover:bg-[#0A0A0A]/70 active:scale-95"
           onClick={toggleMute}
           style={{ boxShadow: "0 0 0 4px rgba(0, 0, 0, 0.2)" }}
           type="button"
@@ -981,6 +1061,7 @@ export default function ZoomExperience({
       {mounted && (
         <div
           className="absolute flex items-center justify-center"
+          onPointerEnter={audioStarted ? handleDialEnter : undefined}
           onPointerLeave={audioStarted ? handlePointerLeave : undefined}
           style={{
             left: "50%",
@@ -989,26 +1070,27 @@ export default function ZoomExperience({
             width: OUTER_RADIUS * 2,
             height: OUTER_RADIUS * 2,
             // When ring is not visible, allow events to pass through for zoom
-            pointerEvents:
-              audioStarted && !isHovered && !showRingAfterStart && hideRing
+            // But always allow pointer events for selected circle bg
+            pointerEvents: audioStarted
+              ? audioStarted &&
+                !isHovered &&
+                !isSelectedCircleHovered &&
+                !showRingAfterStart &&
+                fadePhase === "idle"
                 ? "none"
-                : "auto",
+                : "auto"
+              : "none",
+            cursor: audioStarted
+              ? audioStarted &&
+                (isHovered || isSelectedCircleHovered || showRingAfterStart) &&
+                fadePhase === "idle"
+                ? isDragging
+                  ? "grabbing"
+                  : "grab"
+                : "default"
+              : "default",
           }}
         >
-          {/* Clickable overlay to start audio - only visible before audio starts */}
-          {!audioStarted && (
-            <button
-              aria-label="Start experience"
-              className="absolute inset-0 z-50 cursor-pointer rounded-full"
-              onClick={startAudio}
-              style={{
-                background: "transparent",
-                border: "none",
-                padding: 0,
-              }}
-              type="button"
-            />
-          )}
           {/* Ring background - only the ring band, not the center */}
           <div
             className="pointer-events-none absolute rounded-full transition-opacity duration-300"
@@ -1022,7 +1104,9 @@ export default function ZoomExperience({
               backdropFilter: "blur(8px)",
               WebkitBackdropFilter: "blur(8px)",
               opacity:
-                !audioStarted || isHovered || showRingAfterStart || !hideRing
+                audioStarted &&
+                fadePhase === "idle" &&
+                (isHovered || isSelectedCircleHovered || showRingAfterStart)
                   ? 1
                   : 0,
               zIndex: 1,
@@ -1030,9 +1114,38 @@ export default function ZoomExperience({
             }}
           />
 
-          {/* Permanent slot circle at selected position (bottom) - white transparent */}
+          {/* Loading ring - around selected circle, visible during entire transition */}
           <div
             className="pointer-events-none absolute rounded-full transition-opacity duration-300"
+            style={{
+              width: BUTTON_RADIUS * 2 + 12,
+              height: BUTTON_RADIUS * 2 + 12,
+              left: OUTER_RADIUS - BUTTON_RADIUS - 6,
+              top: OUTER_RADIUS + BUTTON_CIRCLE_RADIUS - BUTTON_RADIUS - 6,
+              background:
+                "conic-gradient(from 0deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.7))",
+              animation: "spin 2s ease-in-out infinite",
+              zIndex: 15,
+              opacity: fadePhase !== "idle" ? 1 : 0,
+              WebkitMask:
+                "radial-gradient(farthest-side, transparent calc(100% - 3px), black calc(100% - 3px))",
+              mask: "radial-gradient(farthest-side, transparent calc(100% - 3px), black calc(100% - 3px))",
+            }}
+          />
+
+          {/* Permanent slot circle at selected position (bottom) - white transparent */}
+          <div
+            className="absolute rounded-full transition-opacity duration-300"
+            onPointerEnter={
+              audioStarted && fadePhase === "idle"
+                ? handleSelectedCircleEnter
+                : undefined
+            }
+            onPointerLeave={
+              audioStarted && fadePhase === "idle"
+                ? handleSelectedCircleLeave
+                : undefined
+            }
             style={{
               width: `${BUTTON_RADIUS * 2}px`,
               height: `${BUTTON_RADIUS * 2}px`,
@@ -1045,6 +1158,8 @@ export default function ZoomExperience({
               opacity: audioStarted ? 1 : 0,
               zIndex: 2,
               boxShadow: "0 0 0 4px rgba(0, 0, 0, 0.2)",
+              pointerEvents:
+                audioStarted && fadePhase === "idle" ? "auto" : "none",
             }}
           />
 
@@ -1055,7 +1170,9 @@ export default function ZoomExperience({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onWheel={
-              audioStarted && (isHovered || showRingAfterStart || !hideRing)
+              audioStarted &&
+              fadePhase === "idle" &&
+              (isHovered || isSelectedCircleHovered || showRingAfterStart)
                 ? handleWheel
                 : undefined
             }
@@ -1063,12 +1180,13 @@ export default function ZoomExperience({
             style={{
               touchAction: "none",
               transform: `rotate(${-ringRotation}rad)`,
-              // Only allow pointer events when audio started AND ring is visible
+              // Only allow pointer events when audio started AND ring is visible AND idle
               pointerEvents:
-                audioStarted && (isHovered || showRingAfterStart || !hideRing)
+                audioStarted &&
+                fadePhase === "idle" &&
+                (isHovered || isSelectedCircleHovered || showRingAfterStart)
                   ? "auto"
                   : "none",
-              cursor: isDragging ? "grabbing" : isHovered ? "grab" : "default",
               zIndex: 3,
             }}
           >
@@ -1087,22 +1205,23 @@ export default function ZoomExperience({
               const label = formatLabel(set.name);
 
               // Show all items when hovered, only selected when not
-              // Before audio starts, show all items. After audio starts, show on hover or if selected
-              // Group visibility: outer circle, buttons, and SVG all use the same condition
-              // Note: isDragging alone doesn't trigger visibility - only maintains it if already visible
+              // Before audio starts, hide all buttons. After audio starts, show on hover or if selected
+              // During transition: hide all except selected button
+              // Group visibility: dial visible when hovering selected image or during delay
               const groupVisible =
-                !audioStarted || isHovered || showRingAfterStart || !hideRing;
-              const shouldShow = audioStarted
-                ? groupVisible || isAtBottom
-                : true;
+                audioStarted &&
+                fadePhase === "idle" &&
+                (isHovered || isSelectedCircleHovered || showRingAfterStart);
+              // Selected button is always visible once audio started (even during loading)
+              // Other buttons only visible when group is visible
+              const shouldShow = (audioStarted && isAtBottom) || groupVisible;
               // Selected button is always draggable, others need ring visible
               // Before audio starts, don't allow dragging (just clicking to start)
-              const isDraggable = audioStarted
-                ? isAtBottom ||
-                  (groupVisible &&
-                    (isHovered || isDragging || !hideRing) &&
-                    shouldShow)
-                : false;
+              // During transition, don't allow any dragging
+              const isDraggable =
+                audioStarted && fadePhase === "idle"
+                  ? isAtBottom || (groupVisible && shouldShow)
+                  : false;
 
               return (
                 <div
@@ -1110,11 +1229,13 @@ export default function ZoomExperience({
                   key={set.name}
                   onPointerDown={
                     isDraggable
-                      ? (e) => handlePointerDown(e, isAtBottom)
+                      ? (e) => handlePointerDown(e, isAtBottom, index)
                       : undefined
                   }
                   onPointerEnter={
-                    audioStarted && isAtBottom ? handlePointerEnter : undefined
+                    audioStarted && isAtBottom && fadePhase === "idle"
+                      ? handlePointerEnter
+                      : undefined
                   }
                   style={{
                     width: `${BUTTON_RADIUS * 2}px`,
@@ -1123,26 +1244,19 @@ export default function ZoomExperience({
                     top: "50%",
                     transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) rotate(${itemAngle - Math.PI / 2}rad)`,
                     zIndex: isAtBottom ? 10 : 1,
-                    opacity: isAtBottom ? 1 : groupVisible ? 1 : 0,
+                    // Selected button visible when audio started, others when group visible
+                    opacity: shouldShow ? 1 : 0,
                     pointerEvents:
-                      // Selected button always has pointer events to allow hover
-                      // Other buttons only when visible and draggable
-                      isAtBottom || (isDraggable && groupVisible)
-                        ? "auto"
-                        : "none",
-                    cursor: isDragging
-                      ? "grabbing"
-                      : isDraggable
-                        ? "grab"
-                        : "default",
+                      // No pointer events during transition
+                      // Selected button has events when idle, others when draggable
+                      fadePhase !== "idle"
+                        ? "none"
+                        : isAtBottom || (isDraggable && groupVisible)
+                          ? "auto"
+                          : "none",
                   }}
                 >
-                  <div
-                    className={cx(
-                      "relative h-full w-full overflow-hidden rounded-full bg-black/50",
-                      isDragging && isAtBottom ? "cursor-grabbing" : ""
-                    )}
-                  >
+                  <div className="relative h-full w-full overflow-hidden rounded-full bg-[#0A0A0A]/50">
                     {preview ? (
                       <Image
                         alt={label}
@@ -1161,24 +1275,7 @@ export default function ZoomExperience({
             })}
           </div>
 
-          {/* Tap to start text - shown before audio starts */}
-          {!audioStarted && (
-            <div
-              className="pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity duration-300"
-              style={{
-                left: "50%",
-                top: "50%",
-                transform: "translate(-50%, -50%)",
-                zIndex: 5,
-              }}
-            >
-              <span className="font-medium text-white/80 text-xs uppercase">
-                Tap to start
-              </span>
-            </div>
-          )}
-
-          {/* Center logo - Dream Journey */}
+          {/* Center logo */}
           <div
             className="pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity duration-300"
             style={{
@@ -1186,7 +1283,9 @@ export default function ZoomExperience({
               top: "50%",
               transform: "translate(-50%, -40%)",
               opacity:
-                audioStarted && (isHovered || showRingAfterStart || !hideRing)
+                audioStarted &&
+                fadePhase === "idle" &&
+                (isHovered || isSelectedCircleHovered || showRingAfterStart)
                   ? 0.7
                   : 0,
               zIndex: 4,
@@ -1209,31 +1308,77 @@ export default function ZoomExperience({
 
       {/* Initial loading overlay */}
       <div
-        className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-black transition-opacity duration-700"
+        className="absolute inset-0 z-50 flex flex-col items-center justify-center transition-opacity duration-700"
         style={{
-          opacity: isInitialLoading || !minLoadingTimePassed ? 1 : 0,
+          background: "radial-gradient(circle at center, #1E1E1E, #0F0F0F)",
+          pointerEvents: "none",
+          opacity:
+            isInitialLoading || !minLoadingTimePassed || !audioReady
+              ? 1
+              : audioStarted
+                ? 0
+                : 1,
         }}
       >
-        <span
-          className="text-white/70"
+        {/* Logo - shown on both loading and enter screens, absolutely positioned */}
+        {(isInitialLoading ||
+          !minLoadingTimePassed ||
+          !audioReady ||
+          !audioStarted) && (
+          <Image
+            alt="Dream Journey"
+            className="absolute select-none"
+            height={12}
+            src="/dream-journey-long.svg"
+            style={{
+              pointerEvents: "none",
+              top: "calc(50% - 100px)",
+              left: "50%",
+              transform: "translate(-50%, -50%) scale(3.5)",
+            }}
+            width={64}
+          />
+        )}
+        {/* Container for button/text to maintain consistent spacing */}
+        <div
+          className="absolute flex items-center justify-center"
           style={{
-            fontFamily:
-              'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            fontSize: "1rem",
-            letterSpacing: "0.05em",
+            top: "calc(50% + 32px)",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            height: "96px",
+            width: "96px",
           }}
         >
-          Dreaming
-          <span
-            style={{
-              display: "inline-block",
-              width: "1.5ch",
-              textAlign: "left",
-            }}
-          >
-            {".".repeat(dotCount)}
-          </span>
-        </span>
+          {isInitialLoading || !minLoadingTimePassed || !audioReady ? (
+            <span className="font-medium text-white/80 text-xs uppercase">
+              Dreaming
+              <span
+                style={{
+                  display: "inline-block",
+                  width: "1.5ch",
+                  textAlign: "left",
+                }}
+              >
+                {".".repeat(dotCount)}
+              </span>
+            </span>
+          ) : audioStarted ? null : (
+            <button
+              className="pointer-events-auto flex h-24 w-24 cursor-pointer items-center justify-center rounded-full border border-white/20 bg-white/5 transition-all hover:bg-white/10 active:scale-95"
+              onClick={startAudio}
+              style={{
+                fontFamily:
+                  'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+              }}
+              type="button"
+            >
+              <span className="font-medium text-white/80 text-xs uppercase">
+                ENTER
+              </span>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
