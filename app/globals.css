@@ -26,6 +26,10 @@
   }
 }
 
+:root {
+  --desktop-loop: 2.4s;
+}
+
 /* Progressive dots animation: 1, 2, 3, repeat */
 @keyframes dot1 {
   0%, 50% {
@@ -135,4 +139,63 @@
   animation: dial-ring-rotate 2s ease-out infinite;
   transform-origin: 50% 50%;
   transform-box: view-box;
+}
+
+/* Desktop scroll doodle */
+@keyframes desktop-tilt {
+  0%,
+  100% {
+    transform: rotate(2deg);
+  }
+  50% {
+    transform: rotate(-2deg);
+  }
+}
+
+@keyframes two-finger-scroll {
+  0% {
+    transform: translateY(-12px); /* dots up */
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(12px); /* dots down */
+    opacity: 1;
+  }
+}
+
+@keyframes desktop-cube-sync {
+  0% {
+    transform: scale(0.487); /* small when dots up */
+  }
+  100% {
+    transform: scale(2.365); /* large when dots down */
+  }
+}
+
+.desktop-animate .desktop-outline {
+  animation: none;
+  transform-origin: 50% 50%;
+  transform-box: view-box;
+}
+
+.desktop-animate .desktop-shapes {
+  animation-name: desktop-cube-sync;
+  animation-duration: var(--desktop-loop);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+  animation-fill-mode: both;
+  transform-origin: 50% 50%;
+  transform-box: fill-box;
+}
+
+.desktop-animate .scroll-dot {
+  animation-name: two-finger-scroll;
+  animation-duration: var(--desktop-loop);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+  animation-fill-mode: both;
+  transform-origin: 50% 50%;
+  transform-box: fill-box;
 }

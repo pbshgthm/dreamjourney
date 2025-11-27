@@ -47,44 +47,100 @@ function PhoneSideIcon() {
   return (
     <svg
       aria-hidden
-      width="160"
+      className="phone-animate drop-shadow-[0_0_16px_rgba(0,0,0,0.45)]"
+      fill="none"
       height="190"
       viewBox="0 0 160 190"
-      fill="none"
+      width="160"
       xmlns="http://www.w3.org/2000/svg"
-      className="drop-shadow-[0_0_16px_rgba(0,0,0,0.45)] phone-animate"
     >
       <g className="phone-outline">
         <rect
-          x="44"
-          y="10"
-          width="71.221"
           height="144.204"
           rx="10"
           stroke="white"
           strokeOpacity="0.5"
           strokeWidth="1"
+          width="71.221"
+          x="44"
+          y="10"
         />
         <line
-          x1="73.28"
-          y1="16.546"
-          x2="85.945"
-          y2="16.546"
           stroke="white"
+          strokeLinecap="round"
           strokeOpacity="0.5"
           strokeWidth="1"
-          strokeLinecap="round"
+          x1="73.28"
+          x2="85.945"
+          y1="16.546"
+          y2="16.546"
         />
       </g>
       <g className="phone-shapes">
         <rect
-          x="70.6105"
-          y="73.102"
-          width="18"
-          height="18"
-          rx="3.5"
           fill="white"
           fillOpacity="0.9"
+          height="18"
+          rx="3.5"
+          width="18"
+          x="70.6105"
+          y="73.102"
+        />
+      </g>
+    </svg>
+  );
+}
+
+function DesktopScrollIcon() {
+  return (
+    <svg
+      aria-hidden
+      className="desktop-animate drop-shadow-[0_0_16px_rgba(0,0,0,0.45)]"
+      fill="none"
+      height="180"
+      viewBox="0 0 190 180"
+      width="190"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <g className="desktop-outline">
+        <rect
+          height="110"
+          rx="10"
+          stroke="white"
+          strokeOpacity="0.5"
+          strokeWidth="1"
+          width="144"
+          x="23"
+          y="28"
+        />
+      </g>
+      <g className="desktop-shapes">
+        <rect
+          fill="white"
+          fillOpacity="0.9"
+          height="18"
+          rx="3.5"
+          width="18"
+          x="86"
+          y="74"
+        />
+      </g>
+      <g className="desktop-scroll">
+        <circle
+          className="scroll-dot"
+          cx="92"
+          cy="118"
+          fill="white"
+          fillOpacity="1"
+          r="2"
+        />
+        <circle
+          className="scroll-dot"
+          cx="98"
+          cy="118"
+          fill="white"
+          fillOpacity="1"
+          r="2"
         />
       </g>
     </svg>
@@ -97,41 +153,53 @@ function DialSideIcon() {
   const ringR = 33;
   const dots = [
     { x: cx + ringR * Math.sin(0), y: cy - ringR * Math.cos(0) }, // top
-    { x: cx + ringR * Math.sin(Math.PI / 3), y: cy - ringR * Math.cos(Math.PI / 3) },
-    { x: cx + ringR * Math.sin((2 * Math.PI) / 3), y: cy - ringR * Math.cos((2 * Math.PI) / 3) },
+    {
+      x: cx + ringR * Math.sin(Math.PI / 3),
+      y: cy - ringR * Math.cos(Math.PI / 3),
+    },
+    {
+      x: cx + ringR * Math.sin((2 * Math.PI) / 3),
+      y: cy - ringR * Math.cos((2 * Math.PI) / 3),
+    },
     { x: cx + ringR * Math.sin(Math.PI), y: cy - ringR * Math.cos(Math.PI) }, // bottom (active start)
-    { x: cx + ringR * Math.sin((4 * Math.PI) / 3), y: cy - ringR * Math.cos((4 * Math.PI) / 3) },
-    { x: cx + ringR * Math.sin((5 * Math.PI) / 3), y: cy - ringR * Math.cos((5 * Math.PI) / 3) },
+    {
+      x: cx + ringR * Math.sin((4 * Math.PI) / 3),
+      y: cy - ringR * Math.cos((4 * Math.PI) / 3),
+    },
+    {
+      x: cx + ringR * Math.sin((5 * Math.PI) / 3),
+      y: cy - ringR * Math.cos((5 * Math.PI) / 3),
+    },
   ];
 
   return (
     <svg
       aria-hidden
-      width="148"
+      className="dial-animate drop-shadow-[0_0_12px_rgba(0,0,0,0.4)]"
+      fill="none"
       height="148"
       viewBox="0 0 160 160"
-      fill="none"
+      width="148"
       xmlns="http://www.w3.org/2000/svg"
-      className="dial-animate drop-shadow-[0_0_12px_rgba(0,0,0,0.4)]"
     >
       <g className="dial-ring">
         <circle
           cx="80"
           cy="80"
-          r="56.1355"
           fill="none"
+          r="56.1355"
           stroke="white"
           strokeOpacity="0.5"
           strokeWidth="1"
         />
         {dots.map((p, i) => (
           <circle
-            key={i}
             cx={p.x}
             cy={p.y}
-            r="9"
             fill="white"
             fillOpacity={i === 3 ? 0.9 : 0.5}
+            key={i}
+            r="9"
             stroke="none"
             strokeWidth={0}
           />
@@ -141,8 +209,8 @@ function DialSideIcon() {
       <circle
         cx={cx}
         cy={cy + ringR}
-        r="12.5"
         fill="none"
+        r="12.5"
         stroke="white"
         strokeOpacity="0.5"
         strokeWidth="1"
@@ -204,6 +272,7 @@ export default function ZoomExperience({
 
   // Circular selector state
   const [mounted, setMounted] = useState(false);
+  const [mobileDetected, setMobileDetected] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -898,6 +967,7 @@ export default function ZoomExperience({
           userAgent.toLowerCase()
         );
       setIsMobile(isMobileDevice);
+      setMobileDetected(true);
       return isMobileDevice;
     };
 
@@ -1477,12 +1547,12 @@ export default function ZoomExperience({
           !audioStarted) && (
           <Image
             alt="Dream Journey"
-            className="absolute left-1/2 select-none -translate-x-1/2"
+            className="-translate-x-1/2 absolute left-1/2 select-none"
             height={12}
             src="/dream-journey-long.svg"
             style={{
               pointerEvents: "none",
-              top: "calc(50% - 220px)",
+              top: isMobile ? "calc(50% - 250px)" : "calc(50% - 300px)",
               transform: "translateY(-50%) scale(3.5)",
             }}
             width={64}
@@ -1494,62 +1564,178 @@ export default function ZoomExperience({
           !audioReady ||
           !audioStarted) && (
           <div
-            className={`pointer-events-none flex flex-col items-center gap-10 transition-opacity duration-400 translate-y-14 ${introFade === "out" ? "opacity-0" : "opacity-100"}`}
+            className={`pointer-events-none flex flex-col items-center transition-opacity duration-400 ${introFade === "out" ? "opacity-0" : "opacity-100"}`}
+            style={{
+              transform: `translateY(${isMobile ? "-0.5rem" : "1.5rem"})`,
+              gap: isMobile ? "2rem" : "2.5rem",
+            }}
           >
-            {introStage === 0 ? (
-              <div className={`flex flex-col items-center rounded-[14px] px-3 pt-4 pb-4 w-[210px] h-[240px] transition-opacity duration-400 ${animFade === "in" ? "opacity-100" : "opacity-0"}`}>
-                <div className="flex justify-center translate-y-2">
-                  <PhoneSideIcon />
-                </div>
-                <div className="mt-auto pb-1 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-white/50">
-                  Rotate phone to move
-                </div>
-              </div>
-            ) : (
-              <div className={`flex flex-col items-center rounded-[14px] px-3 pt-4 pb-4 w-[210px] h-[240px] transition-opacity duration-400 ${animFade === "in" ? "opacity-100" : "opacity-0"}`}>
-                <div className="flex justify-center scale-[1.22] translate-y-8">
-                  <DialSideIcon />
-                </div>
-                <div className="mt-auto pb-1 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-white/50">
-                  Rotate dial to change
-                </div>
-              </div>
-            )}
+            {isMobile ? (
+              <>
+                {introStage === 0 ? (
+                  <div
+                    className={`flex h-[240px] w-[210px] flex-col items-center rounded-[14px] px-3 pt-6 pb-4 transition-opacity duration-400 ${animFade === "in" ? "opacity-100" : "opacity-0"}`}
+                  >
+                    <div className="flex translate-y-2 justify-center">
+                      <PhoneSideIcon />
+                    </div>
+                    <div className="mt-auto pb-1 text-center font-semibold text-[11px] text-white/50 uppercase tracking-[0.08em]">
+                      Rotate phone to move
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className={`flex h-[240px] w-[210px] flex-col items-center rounded-[14px] px-3 pt-4 pb-4 transition-opacity duration-400 ${animFade === "in" ? "opacity-100" : "opacity-0"}`}
+                  >
+                    <div className="flex translate-y-2 scale-[1.22] justify-center">
+                      <DialSideIcon />
+                    </div>
+                    <div className="mt-auto pb-1 text-center font-semibold text-[11px] text-white/50 uppercase tracking-[0.08em]">
+                      Rotate dial to change
+                    </div>
+                  </div>
+                )}
 
-            {introStage === 0 ? (
-              <div
-                className={`mt-6 flex h-24 w-24 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80 transition-opacity duration-400 hover:bg-white/10 active:scale-95 ${
-                  buttonReady ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-                }`}
-                role="button"
-                tabIndex={-1}
-                onClick={buttonReady ? handleNextStage : undefined}
-              >
-                Next
-              </div>
-            ) : isInitialLoading || !minLoadingTimePassed || !audioReady ? (
-              <div
-                className={`mt-6 flex h-24 w-24 items-center justify-center text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80 transition-opacity duration-400 ${
-                  buttonReady ? "opacity-100" : "opacity-0"
-                }`}
-              >
-                Dreaming
-                <span className="inline-block w-[1.5ch] text-left">
-                  {".".repeat(dotCount)}
-                </span>
-              </div>
-            ) : audioStarted ? null : (
-              <div
-                className={`mt-6 flex h-24 w-24 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[11px] font-semibold uppercase tracking-[0.08em] text-white/80 transition-opacity duration-400 hover:bg-white/10 active:scale-95 ${
-                  buttonReady ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-                }`}
-                role="button"
-                tabIndex={-1}
-                onClick={buttonReady ? startAudio : undefined}
-              >
-                Enter
-              </div>
-            )}
+                {introStage === 0 ? (
+                  <div
+                    className={`flex h-24 w-24 items-center justify-center rounded-full border border-white/20 bg-white/5 font-semibold text-[11px] text-white/80 uppercase tracking-[0.08em] transition-opacity duration-400 hover:bg-white/10 active:scale-95 ${
+                      buttonReady
+                        ? "pointer-events-auto opacity-100"
+                        : "pointer-events-none opacity-0"
+                    }`}
+                    onClick={buttonReady ? handleNextStage : undefined}
+                    role="button"
+                    style={{ marginTop: isMobile ? "-1rem" : "-0.5rem" }}
+                    tabIndex={-1}
+                  >
+                    Next
+                  </div>
+                ) : isInitialLoading || !minLoadingTimePassed || !audioReady ? (
+                  <div
+                    className={`flex h-24 w-24 items-center justify-center font-semibold text-[11px] text-white/80 uppercase tracking-[0.08em] transition-opacity duration-400 ${
+                      buttonReady ? "opacity-100" : "opacity-0"
+                    }`}
+                    style={{ marginTop: isMobile ? "-1rem" : "-0.5rem" }}
+                  >
+                    Dreaming
+                    <span className="inline-block w-[1.5ch] text-left">
+                      {".".repeat(dotCount)}
+                    </span>
+                  </div>
+                ) : audioStarted ? null : (
+                  <div
+                    className={`flex h-24 w-24 items-center justify-center rounded-full border border-white/20 bg-white/5 font-semibold text-[11px] text-white/80 uppercase tracking-[0.08em] transition-opacity duration-400 hover:bg-white/10 active:scale-95 ${
+                      buttonReady
+                        ? "pointer-events-auto opacity-100"
+                        : "pointer-events-none opacity-0"
+                    }`}
+                    onClick={buttonReady ? startAudio : undefined}
+                    role="button"
+                    style={{ marginTop: isMobile ? "-1rem" : "-0.5rem" }}
+                    tabIndex={-1}
+                  >
+                    Enter
+                  </div>
+                )}
+              </>
+            ) : mobileDetected && !isMobile ? (
+              <>
+                {introStage === 0 ? (
+                  <div
+                    className={`flex h-[240px] w-[210px] flex-col items-center rounded-[14px] px-3 pt-6 pb-6 transition-opacity duration-400 ${animFade === "in" ? "opacity-100" : "opacity-0"}`}
+                  >
+                    <div className="-translate-y-1 flex w-full flex-1 items-center justify-center">
+                      <Image
+                        alt="Scan QR"
+                        className="select-none invert"
+                        height={148}
+                        priority
+                        src="/qr.svg"
+                        width={148}
+                      />
+                    </div>
+                    <div className="mt-auto pt-8 pb-1 text-center font-semibold text-[11px] text-white/60 uppercase leading-[1.7] tracking-[0.08em]">
+                      Designed for mobile
+                      <br />
+                      Scan to open
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className={`flex h-[240px] w-[210px] flex-col items-center rounded-[14px] px-3 pt-4 pb-4 transition-opacity duration-400 ${animFade === "in" ? "opacity-100" : "opacity-0"}`}
+                  >
+                    <div className="flex scale-[1.08] justify-center">
+                      <DesktopScrollIcon />
+                    </div>
+                    <div className="mt-auto pb-1 text-center font-semibold text-[11px] text-white/50 uppercase tracking-[0.08em]">
+                      Scroll to move
+                    </div>
+                  </div>
+                )}
+
+                {introStage === 0 ? (
+                  <div
+                    className={`-mt-2 flex h-24 w-24 cursor-pointer items-center justify-center rounded-full border border-white/20 bg-white/5 font-semibold text-[11px] text-white/80 uppercase tracking-[0.08em] transition-opacity duration-400 hover:bg-white/10 active:scale-95 ${
+                      buttonReady
+                        ? "pointer-events-auto opacity-100"
+                        : "pointer-events-none opacity-0"
+                    }`}
+                    onClick={buttonReady ? handleNextStage : undefined}
+                    role="button"
+                    tabIndex={-1}
+                  >
+                    Continue
+                  </div>
+                ) : isInitialLoading || !minLoadingTimePassed || !audioReady ? (
+                  <div
+                    className={`-mt-2 flex h-24 w-24 items-center justify-center font-semibold text-[11px] text-white/80 uppercase tracking-[0.08em] transition-opacity duration-400 ${
+                      buttonReady ? "opacity-100" : "opacity-0"
+                    }`}
+                  >
+                    Dreaming
+                    <span className="inline-block w-[1.5ch] text-left">
+                      {".".repeat(dotCount)}
+                    </span>
+                  </div>
+                ) : audioStarted ? null : (
+                  <div
+                    className={`-mt-2 flex h-24 w-24 cursor-pointer items-center justify-center rounded-full border border-white/20 bg-white/5 font-semibold text-[11px] text-white/80 uppercase tracking-[0.08em] transition-opacity duration-400 hover:bg-white/10 active:scale-95 ${
+                      buttonReady
+                        ? "pointer-events-auto opacity-100"
+                        : "pointer-events-none opacity-0"
+                    }`}
+                    onClick={buttonReady ? startAudio : undefined}
+                    role="button"
+                    tabIndex={-1}
+                  >
+                    Enter
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
+        )}
+
+        {/* Attribution */}
+        {(isInitialLoading ||
+          !minLoadingTimePassed ||
+          !audioReady ||
+          !audioStarted) && (
+          <div
+            className={`pointer-events-none absolute text-center font-semibold text-[11px] text-white/50 uppercase tracking-[0.08em] transition-opacity duration-400 ${introFade === "out" ? "opacity-0" : "opacity-100"}`}
+            style={{
+              bottom: isMobile ? "3rem" : "5rem",
+            }}
+          >
+            Made by{" "}
+            <a
+              className="pointer-events-auto underline transition-colors hover:text-white/70"
+              href="https://x.com/pbshgthm"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              poobesh gowtham
+            </a>
           </div>
         )}
       </div>
