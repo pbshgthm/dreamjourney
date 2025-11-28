@@ -13,9 +13,7 @@ export const metadata: Metadata = {
     address: false,
     telephone: false,
   },
-  ...(process.env.NEXT_PUBLIC_BASE_URL && {
-    metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL),
-  }),
+  metadataBase: new URL("https://dreamjourney.app"),
   openGraph: {
     title: "Dream Journey",
     description: "An immersive experience, exploring interactive AI generated artwork",
@@ -37,7 +35,14 @@ export const metadata: Metadata = {
     description: "An immersive experience, exploring interactive AI generated artwork",
     creator: "@pbshgthm",
     site: "@pbshgthm",
-    images: ["/dream-journey-og.png"],
+    images: [
+      {
+        url: "/dream-journey-og.png",
+        width: 1200,
+        height: 630,
+        alt: "Dream Journey - An immersive experience, exploring interactive AI generated artwork",
+      },
+    ],
   },
   icons: {
     icon: "/favicon.svg",
